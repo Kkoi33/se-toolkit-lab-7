@@ -2,12 +2,12 @@
 LLM Client with tool calling support.
 
 Handles communication with the LLM API for intent recognition.
+The LLM decides which tool to call - no regex or keyword matching in routing.
 """
 
 import httpx
 import json
 from typing import Optional, Any
-from urllib.parse import urlparse, urljoin
 
 
 # Tool definitions for all 9 backend endpoints
@@ -156,17 +156,6 @@ TOOLS = [
     },
 ]
 
-# Mock responses for when LLM is not available
-MOCK_RESPONSES = {
-    "what labs are available": "There are 6 main labs available:\n1. Lab 01 — Products, Architecture & Roles\n2. Lab 02 — Run, Fix, and Deploy\n3. Lab 03 — Backend API\n4. Lab 04 — Testing, Front-end, and AI Agents\n5. Lab 05 — Data Pipeline and Analytics\n6. Lab 06 — Build Your Own Agent",
-    "hello": "Hello! I can help you with information about labs, scores, and students.",
-    "lowest pass rate": "Based on the available data, Lab 03 has the lowest average pass rate at approximately 58%. The main challenges are in the Backend API and Security Hardening tasks.",
-    "scores": "Scores for the selected lab:\n- Task 1: 92.1% (187 attempts)\n- Task 2: 71.4% (156 attempts)\n- Task 3: 68.3% (142 attempts)",
-    "top students": "Top 5 students:\n1. Alice K. — 95.2%\n2. Bob M. — 93.8%\n3. Carol D. — 91.5%\n4. David R. — 89.7%\n5. Emma S. — 88.4%",
-    "groups": "Group performance:\n- Group 1: 78.5% avg (24 students)\n- Group 2: 82.1% avg (22 students)\n- Group 3: 75.3% avg (25 students)",
-    "default": "I understand you're asking about course data. Try asking about specific labs, scores, or students. For example: 'what labs are available?' or 'show me scores for lab 4'",
-}
-
 SYSTEM_PROMPT = """You are a helpful assistant for a software engineering course. You have access to backend API tools that provide data about labs, scores, and students.
 
 When a user asks a question:
@@ -253,37 +242,9 @@ class LLMClient:
                 data = response.json()
                 return data["choices"][0]["message"]
         except Exception as e:
-            # Fallback to mock responses when LLM is unavailable
-            user_message = messages[-1].get("content", "").lower() if messages else ""
-
-            # Simple keyword-based mock routing - order matters!
-            if (
-                "lowest" in user_message
-                or "worst" in user_message
-                or "best" in user_message
-            ):
-                return {"content": MOCK_RESPONSES["lowest pass rate"], "tool_calls": []}
-            elif "top" in user_message and (
-                "student" in user_message or "learner" in user_message
-            ):
-                return {"content": MOCK_RESPONSES["top students"], "tool_calls": []}
-            elif "group" in user_message:
-                return {"content": MOCK_RESPONSES["groups"], "tool_calls": []}
-            elif "score" in user_message or "pass rate" in user_message:
-                return {"content": MOCK_RESPONSES["scores"], "tool_calls": []}
-            elif "lab" in user_message and (
-                "available" in user_message or "list" in user_message
-            ):
-                return {
-                    "content": MOCK_RESPONSES["what labs are available"],
-                    "tool_calls": [],
-                }
-            elif (
-                "hello" in user_message or "hi" in user_message or "hey" in user_message
-            ):
-                return {"content": MOCK_RESPONSES["hello"], "tool_calls": []}
-            else:
-                return {"content": MOCK_RESPONSES["default"], "tool_calls": []}
+            # When LLM is unavailable, return a simple error message
+            # The LLM is responsible for routing - no keyword matching here
+            raise e
 
     def extract_tool_calls(self, message: dict) -> list[dict]:
         """

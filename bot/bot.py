@@ -26,7 +26,7 @@ from handlers.commands import (
     handle_labs,
     handle_scores,
 )
-from handlers.intents import route_message, handle_greeting, handle_fallback
+from handlers.intents import route_message
 from handlers.messages import handle_unknown_message
 
 
@@ -68,13 +68,6 @@ def run_test_mode(command: str) -> None:
         sys.exit(0)
     else:
         # Plain text message - use LLM routing
-        # Check for greeting first
-        greeting_response = handle_greeting(command)
-        if greeting_response:
-            print(greeting_response)
-            sys.exit(0)
-
-        # Use LLM intent routing
         response = route_message(command, debug=True)
         print(response)
         sys.exit(0)

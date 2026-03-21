@@ -2,6 +2,7 @@
 Intent-based natural language routing using LLM.
 
 Routes user messages to appropriate handlers based on LLM tool calls.
+The LLM decides which tool to call — no regex or keyword matching in the routing path.
 """
 
 import sys
@@ -25,6 +26,9 @@ def route_message(message: str, debug: bool = False) -> str:
     """
     Route a natural language message to appropriate tools and return response.
 
+    The LLM decides which tool to call based on tool descriptions.
+    No regex or keyword matching is used for routing.
+
     Args:
         message: User's message text
         debug: If True, print debug info to stderr
@@ -35,13 +39,6 @@ def route_message(message: str, debug: bool = False) -> str:
     llm_client = create_client_from_config()
     api_client = create_api_client()
 
-    # First try simple keyword-based routing for common queries
-    # This works even when LLM is unavailable
-    simple_response = try_simple_routing(message, api_client, debug)
-    if simple_response:
-        return simple_response
-
-    # If no simple match, try LLM
     # Initial messages
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -133,130 +130,10 @@ def route_message(message: str, debug: bool = False) -> str:
         except Exception as e:
             if debug:
                 print(f"[error] LLM error: {str(e)}", file=sys.stderr)
-            # If LLM fails, fall back to simple routing
-            return (
-                try_simple_routing(message, api_client, debug) or f"LLM error: {str(e)}"
-            )
+            # Return error message - the mock fallback in llm_client.py will handle it
+            return f"LLM error: {str(e)}"
 
     return "I'm having trouble processing this request. Please try rephrasing."
-
-
-def try_simple_routing(message: str, api_client, debug: bool = False) -> str:
-    """
-    Try to handle simple queries without LLM by calling backend directly.
-
-    Args:
-        message: User's message
-        api_client: LMS API client
-        debug: If True, print debug info
-
-    Returns:
-        Response string or None if query is too complex for simple routing
-    """
-    msg_lower = message.lower()
-
-    # "how many students are enrolled" -> GET /learners/
-    if "how many" in msg_lower and (
-        "student" in msg_lower or "learner" in msg_lower or "enrolled" in msg_lower
-    ):
-        try:
-            if debug:
-                print(f"[simple] Calling get_learners()", file=sys.stderr)
-            url = f"{api_client.base_url}/learners/"
-            import httpx
-
-            with httpx.Client(timeout=api_client.timeout) as client:
-                response = client.get(url, headers=api_client._get_headers())
-                response.raise_for_status()
-                data = response.json()
-                count = len(data) if isinstance(data, list) else 0
-                return f"There are {count} students enrolled."
-        except Exception as e:
-            if debug:
-                print(f"[simple] Error: {str(e)}", file=sys.stderr)
-            return f"Error fetching student count: {str(e)}"
-
-    # "sync the data" -> POST /pipeline/sync
-    if "sync" in msg_lower or "refresh" in msg_lower or "update" in msg_lower:
-        try:
-            if debug:
-                print(f"[simple] Calling trigger_sync()", file=sys.stderr)
-            url = f"{api_client.base_url}/pipeline/sync"
-            import httpx
-
-            with httpx.Client(timeout=api_client.timeout) as client:
-                response = client.post(url, headers=api_client._get_headers(), json={})
-                response.raise_for_status()
-                data = response.json()
-                return f"Sync completed successfully. {data.get('items_synced', 0)} items synced."
-        except Exception as e:
-            if debug:
-                print(f"[simple] Error: {str(e)}", file=sys.stderr)
-            return f"Error syncing data: {str(e)}"
-
-    # "what labs are available" -> GET /items/
-    if "lab" in msg_lower and (
-        "available" in msg_lower or "list" in msg_lower or "what" in msg_lower
-    ):
-        try:
-            if debug:
-                print(f"[simple] Calling get_labs()", file=sys.stderr)
-            labs = api_client.get_labs()
-            if not labs:
-                return "No labs available."
-            lines = ["Available labs:"]
-            for lab in labs:
-                if isinstance(lab, dict):
-                    name = lab.get("name", lab.get("slug", "Unknown"))
-                    title = lab.get("title", lab.get("name", ""))
-                    lines.append(f"- {name} — {title}")
-                else:
-                    lines.append(f"- {lab}")
-            return "\n".join(lines)
-        except Exception as e:
-            if debug:
-                print(f"[simple] Error: {str(e)}", file=sys.stderr)
-            return f"Error fetching labs: {str(e)}"
-
-    # "show me scores for lab X" -> GET /analytics/pass-rates?lab=X
-    if "score" in msg_lower or "pass rate" in msg_lower:
-        import re
-
-        match = re.search(r"lab[- ]?(\d+)", msg_lower)
-        if match:
-            lab_num = match.group(1).zfill(2)
-            lab_name = f"lab-{lab_num}"
-            try:
-                if debug:
-                    print(
-                        f"[simple] Calling get_pass_rates({lab_name})", file=sys.stderr
-                    )
-                scores = api_client.get_scores(lab_name)
-                if not scores:
-                    return f"No scores found for {lab_name}."
-                lines = [f"Pass rates for {lab_name}:"]
-                if isinstance(scores, dict):
-                    for task_name, data in scores.items():
-                        if isinstance(data, dict):
-                            rate = data.get("pass_rate", data.get("rate", 0)) * 100
-                            attempts = data.get("attempts", 0)
-                            lines.append(
-                                f"- {task_name}: {rate:.1f}% ({attempts} attempts)"
-                            )
-                elif isinstance(scores, list):
-                    for item in scores:
-                        if isinstance(item, dict):
-                            task = item.get("task", item.get("name", "Unknown"))
-                            rate = item.get("pass_rate", item.get("rate", 0)) * 100
-                            attempts = item.get("attempts", 0)
-                            lines.append(f"- {task}: {rate:.1f}% ({attempts} attempts)")
-                return "\n".join(lines)
-            except Exception as e:
-                if debug:
-                    print(f"[simple] Error: {str(e)}", file=sys.stderr)
-                return f"Error fetching scores: {str(e)}"
-
-    return None
 
 
 def execute_tool(name: str, arguments: dict, api_client) -> any:
@@ -365,32 +242,3 @@ def execute_tool(name: str, arguments: dict, api_client) -> any:
 
     except Exception as e:
         return f"Error executing {name}: {str(e)}"
-
-
-def handle_greeting(message: str) -> Optional[str]:
-    """
-    Check if message is a greeting and return appropriate response.
-
-    Args:
-        message: User's message
-
-    Returns:
-        Response string or None if not a greeting
-    """
-    greetings = ["hi", "hello", "hey", "привет", "здравствуйте"]
-    if message.lower().strip() in greetings:
-        return "Hello! I can help you with information about labs, scores, and students. Try asking 'what labs are available?' or 'show me scores for lab 4'."
-    return None
-
-
-def handle_fallback(message: str) -> str:
-    """
-    Handle messages that don't match any known pattern.
-
-    Args:
-        message: User's message
-
-    Returns:
-        Helpful fallback response
-    """
-    return f"I didn't understand: '{message}'\n\nTry asking about:\n- Available labs\n- Scores for a specific lab\n- Top students\n- Group performance\n\nOr use /help to see all commands."
