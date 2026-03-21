@@ -177,12 +177,13 @@ def _fallback_routing(message: str, api_client, debug: bool) -> str:
                 if not labs:
                     return "No labs available."
 
-                # Filter for main labs only
+                # Filter for main labs only (Lab 01, Lab 02, etc. or lab-01, lab-02)
                 main_labs = []
                 for lab in labs:
                     if isinstance(lab, dict):
                         name = lab.get("name", lab.get("slug", ""))
-                        if name and re.match(r"lab-0?\d+$", name.lower()):
+                        # Match "Lab 01", "lab-01", "lab 01" formats
+                        if name and re.match(r"lab[- ]?\d+$", name.lower()):
                             main_labs.append(name)
 
                 if not main_labs:
