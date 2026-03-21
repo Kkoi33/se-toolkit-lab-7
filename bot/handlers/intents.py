@@ -182,8 +182,8 @@ def _fallback_routing(message: str, api_client, debug: bool) -> str:
                 for lab in labs:
                     if isinstance(lab, dict):
                         name = lab.get("name", lab.get("slug", ""))
-                        # Match "Lab 01", "lab-01", "lab 01" formats
-                        if name and re.match(r"lab[- ]?\d+$", name.lower()):
+                        # Match "Lab 01", "lab-01", "lab 01" at the start of the name
+                        if name and re.match(r"^lab[- ]?\d+", name.lower()):
                             main_labs.append(name)
 
                 if not main_labs:
