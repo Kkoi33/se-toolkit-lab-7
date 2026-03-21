@@ -24,23 +24,10 @@ from services.api_client import create_client_from_config as create_api_client
 
 
 def route_message(message: str, debug: bool = False) -> str:
-    """
-    Route a natural language message to appropriate tools and return response.
-
-    The LLM decides which tool to call based on tool descriptions.
-    When LLM is unavailable, falls back to direct API calls.
-
-    Args:
-        message: User's message text
-        debug: If True, print debug info to stderr
-
-    Returns:
-        Bot's response text
-    """
+    """Route a natural language message to appropriate tools and return response."""
     llm_client = create_client_from_config()
     api_client = create_api_client()
 
-    # Initial messages
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": message},
@@ -49,20 +36,16 @@ def route_message(message: str, debug: bool = False) -> str:
     if debug:
         print(f"[intent] Processing: {message}", file=sys.stderr)
 
-    # Try LLM first
     try:
         return _llm_routing(llm_client, api_client, messages, debug)
     except Exception as e:
         if debug:
             print(f"[intent] LLM failed: {str(e)}, using fallback", file=sys.stderr)
-        # Fallback to direct API calls when LLM is unavailable
         return _fallback_routing(message, api_client, debug)
 
 
 def _llm_routing(llm_client, api_client, messages: list, debug: bool) -> str:
-    """
-    Main LLM-based routing loop.
-    """
+    """Main LLM-based routing loop."""
     max_iterations = 5
     for iteration in range(max_iterations):
         response = llm_client.chat(messages, tools=TOOLS)
@@ -133,9 +116,7 @@ def _llm_routing(llm_client, api_client, messages: list, debug: bool) -> str:
 
 
 def _fallback_routing(message: str, api_client, debug: bool) -> str:
-    """
-    Fallback routing when LLM is unavailable.
-    """
+    """Fallback routing when LLM is unavailable."""
     msg_lower = message.lower()
 
     # "what labs are available" -> GET /items/
@@ -151,9 +132,8 @@ def _fallback_routing(message: str, api_client, debug: bool) -> str:
             lines = ["Available labs:"]
             for lab in labs:
                 if isinstance(lab, dict):
-                    name = lab.get("name", lab.get("slug", "Unknown"))
-                    title = lab.get("title", lab.get("name", ""))
-                    lines.append(f"- {name} — {title}")
+                    title = lab.get("title", "Unknown")
+                    lines.append(f"- {title}")
                 else:
                     lines.append(f"- {lab}")
             return "\n".join(lines)
@@ -177,14 +157,15 @@ def _fallback_routing(message: str, api_client, debug: bool) -> str:
                 if not labs:
                     return "No labs available."
 
-                # Filter for main labs only (Lab 01, Lab 02, etc. or lab-01, lab-02)
+                # Extract lab numbers from titles like "Lab 01 - ..."
                 main_labs = []
                 for lab in labs:
                     if isinstance(lab, dict):
-                        name = lab.get("name", lab.get("slug", ""))
-                        # Match "Lab 01", "lab-01", "lab 01" at the start of the name
-                        if name and re.match(r"^lab[- ]?\d+", name.lower()):
-                            main_labs.append(name)
+                        title = lab.get("title", "")
+                        match = re.match(r"^Lab\s*(\d+)", title, re.IGNORECASE)
+                        if match:
+                            lab_num = match.group(1).zfill(2)
+                            main_labs.append(f"lab-{lab_num}")
 
                 if not main_labs:
                     return "No main labs found."
