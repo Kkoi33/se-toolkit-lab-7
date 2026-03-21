@@ -8,7 +8,23 @@ and returns a string response. This makes them testable without Telegram.
 
 def handle_start() -> str:
     """Handle /start command - welcome message."""
-    return "Welcome to SE Toolkit Bot! 🤖\n\nUse /help to see available commands."
+    return """Welcome to SE Toolkit Bot! 🤖
+
+I can help you with information about labs, scores, and students.
+
+Quick actions (buttons below):
+- 📋 Available Labs
+- 💪 Health Check
+- 📊 Scores for specific labs
+- 🏆 Top students
+- 👥 Groups performance
+
+Or just ask me a question like:
+• "which lab has the lowest pass rate?"
+• "show me scores for lab 4"
+• "who are the top 5 students?"
+
+Use /help to see all commands."""
 
 
 def handle_help() -> str:
@@ -40,15 +56,15 @@ def handle_labs() -> str:
 def handle_scores(lab_name: str = None) -> str:
     """
     Handle /scores command - get scores for a lab.
-    
+
     Args:
         lab_name: Name of the lab (e.g., 'lab-04')
-    
+
     Returns:
         Scores information for the specified lab
     """
     if lab_name is None:
         return "Usage: /scores <lab_name>\nExample: /scores lab-04"
-    
+
     # TODO: Implement real scores lookup in Task 2
     return f"Scores for {lab_name}: (not yet implemented)"
