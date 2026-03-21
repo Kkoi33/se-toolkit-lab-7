@@ -175,12 +175,13 @@ def _fallback_routing(message: str, api_client, debug: bool) -> str:
                 for lab_name in main_labs:
                     try:
                         scores = api_client.get_scores(lab_name)
-                        if isinstance(scores, dict) and scores:
-                            rates = []
-                            for v in scores.values():
-                                if isinstance(v, dict):
-                                    rate = v.get("pass_rate", v.get("rate", 0)) * 100
-                                    rates.append(rate)
+                        # API returns a list of dicts: [{'task': '...', 'avg_score': X, 'attempts': N}, ...]
+                        if isinstance(scores, list) and scores:
+                            rates = [
+                                item.get("avg_score", 0)
+                                for item in scores
+                                if isinstance(item, dict)
+                            ]
                             if rates:
                                 avg_rate = sum(rates) / len(rates)
                                 results.append((lab_name, avg_rate))
