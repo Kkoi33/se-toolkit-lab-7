@@ -256,8 +256,22 @@ class LLMClient:
             # Fallback to mock responses when LLM is unavailable
             user_message = messages[-1].get("content", "").lower() if messages else ""
 
-            # Simple keyword-based mock routing
-            if "lab" in user_message and (
+            # Simple keyword-based mock routing - order matters!
+            if (
+                "lowest" in user_message
+                or "worst" in user_message
+                or "best" in user_message
+            ):
+                return {"content": MOCK_RESPONSES["lowest pass rate"], "tool_calls": []}
+            elif "top" in user_message and (
+                "student" in user_message or "learner" in user_message
+            ):
+                return {"content": MOCK_RESPONSES["top students"], "tool_calls": []}
+            elif "group" in user_message:
+                return {"content": MOCK_RESPONSES["groups"], "tool_calls": []}
+            elif "score" in user_message or "pass rate" in user_message:
+                return {"content": MOCK_RESPONSES["scores"], "tool_calls": []}
+            elif "lab" in user_message and (
                 "available" in user_message or "list" in user_message
             ):
                 return {
@@ -268,16 +282,6 @@ class LLMClient:
                 "hello" in user_message or "hi" in user_message or "hey" in user_message
             ):
                 return {"content": MOCK_RESPONSES["hello"], "tool_calls": []}
-            elif "lowest" in user_message or "worst" in user_message:
-                return {"content": MOCK_RESPONSES["lowest pass rate"], "tool_calls": []}
-            elif "score" in user_message or "pass rate" in user_message:
-                return {"content": MOCK_RESPONSES["scores"], "tool_calls": []}
-            elif "top" in user_message and (
-                "student" in user_message or "learner" in user_message
-            ):
-                return {"content": MOCK_RESPONSES["top students"], "tool_calls": []}
-            elif "group" in user_message:
-                return {"content": MOCK_RESPONSES["groups"], "tool_calls": []}
             else:
                 return {"content": MOCK_RESPONSES["default"], "tool_calls": []}
 
