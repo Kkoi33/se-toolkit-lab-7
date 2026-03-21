@@ -8,6 +8,7 @@ Supports two modes:
 
 Usage:
     uv run bot.py --test "/start"    # Test mode
+    uv run bot.py --test "hello"     # Test mode with plain text
     uv run bot.py                     # Normal Telegram mode
 """
 
@@ -25,6 +26,8 @@ from handlers.commands import (
     handle_labs,
     handle_scores,
 )
+from handlers.intents import route_message, handle_greeting, handle_fallback
+from handlers.messages import handle_unknown_message
 
 
 def get_handler_for_command(command: str) -> callable:
@@ -49,18 +52,32 @@ def run_test_mode(command: str) -> None:
     cmd = parts[0].lstrip("/")
     arg = parts[1] if len(parts) > 1 else None
 
-    handler = get_handler_for_command(cmd)
+    # Check if it's a slash command
+    if command.startswith("/"):
+        handler = get_handler_for_command(cmd)
 
-    if handler is None:
-        print(f"Unknown command: {cmd}. Use /help to see available commands.")
-        sys.exit(0)  # Exit with 0 - unknown commands should not crash
+        if handler is None:
+            print(f"Unknown command: {cmd}. Use /help to see available commands.")
+            sys.exit(0)
 
-    if arg is not None:
-        response = handler(arg)
+        if arg is not None:
+            response = handler(arg)
+        else:
+            response = handler()
+        print(response)
+        sys.exit(0)
     else:
-        response = handler()
-    print(response)
-    sys.exit(0)
+        # Plain text message - use LLM routing
+        # Check for greeting first
+        greeting_response = handle_greeting(command)
+        if greeting_response:
+            print(greeting_response)
+            sys.exit(0)
+
+        # Use LLM intent routing
+        response = route_message(command, debug=True)
+        print(response)
+        sys.exit(0)
 
 
 def run_telegram_mode() -> None:
@@ -76,8 +93,8 @@ def main() -> None:
     parser.add_argument(
         "--test",
         type=str,
-        metavar="COMMAND",
-        help="Run in test mode with the given command (e.g., '/start')",
+        metavar="MESSAGE",
+        help="Run in test mode with the given message (e.g., '/start' or 'hello')",
     )
 
     args = parser.parse_args()
