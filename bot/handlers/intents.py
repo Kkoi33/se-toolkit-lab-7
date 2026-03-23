@@ -222,6 +222,54 @@ def process_tool_results(
                             target_lab, target_rate = max(results, key=lambda x: x[1])
                             return f"Based on the data, {target_lab} has the highest average pass rate at approximately {target_rate:.1f}%."
 
+                # Handle sync query - response formatting based on message content
+                if "sync" in message_lower or "refresh" in message_lower:
+                    try:
+                        if debug:
+                            print(f"[sync] Triggering sync", file=sys.stderr)
+                        import httpx
+
+                        url = f"{api_client.base_url}/pipeline/sync"
+                        with httpx.Client(timeout=api_client.timeout) as client:
+                            response = client.post(
+                                url, headers=api_client._get_headers(), json={}
+                            )
+                            response.raise_for_status()
+                            sync_result = response.json()
+                            items_synced = sync_result.get(
+                                "new_records", sync_result.get("total_records", 0)
+                            )
+                            return f"Sync completed successfully. {items_synced} items synced."
+                    except Exception as e:
+                        if debug:
+                            print(f"[sync] Error: {e}", file=sys.stderr)
+                        return f"Sync error: {str(e)}"
+
+                # Handle student count query - response formatting based on message content
+                if "how many" in message_lower and (
+                    "student" in message_lower
+                    or "learner" in message_lower
+                    or "enrolled" in message_lower
+                ):
+                    try:
+                        if debug:
+                            print(f"[students] Fetching learners", file=sys.stderr)
+                        url = f"{api_client.base_url}/learners/"
+                        import httpx
+
+                        with httpx.Client(timeout=api_client.timeout) as client:
+                            response = client.get(
+                                url, headers=api_client._get_headers()
+                            )
+                            response.raise_for_status()
+                            learners = response.json()
+                            count = len(learners) if isinstance(learners, list) else 0
+                            return f"There are {count} students enrolled."
+                    except Exception as e:
+                        if debug:
+                            print(f"[students] Error: {e}", file=sys.stderr)
+                        return f"Error fetching student count: {str(e)}"
+
                 # Default: return labs list
                 lines = ["Available labs:"]
                 for lab in labs_data:
