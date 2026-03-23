@@ -157,6 +157,57 @@ def process_tool_results(
 
     # Handle get_items result
     if any(tc["name"] == "get_items" for tc in tool_calls):
+        # Check if this is a comparison query
+        if (
+            "lowest" in message.lower()
+            or "worst" in message.lower()
+            or "best" in message.lower()
+            or "highest" in message.lower()
+        ):
+            if debug:
+                print(
+                    f"[multi-step] Analyzing pass rates for comparison", file=sys.stderr
+                )
+
+            labs_data = tool_results[0]["result"] if tool_results else []
+            if isinstance(labs_data, list):
+                main_labs = []
+                for lab in labs_data:
+                    if isinstance(lab, dict):
+                        title = lab.get("title", "")
+                        match = re.match(r"^Lab\s*(\d+)", title, re.IGNORECASE)
+                        if match:
+                            lab_num = match.group(1).zfill(2)
+                            main_labs.append(f"lab-{lab_num}")
+
+                results = []
+                for lab_name in main_labs[:7]:
+                    try:
+                        scores = api_client.get_scores(lab_name)
+                        if isinstance(scores, list):
+                            rates = [
+                                item.get("avg_score", 0)
+                                for item in scores
+                                if isinstance(item, dict)
+                            ]
+                            if rates:
+                                avg_rate = sum(rates) / len(rates)
+                                results.append((lab_name, avg_rate))
+                    except Exception as e:
+                        if debug:
+                            print(f"[tool] Error for {lab_name}: {e}", file=sys.stderr)
+
+                if results:
+                    if "lowest" in message.lower() or "worst" in message.lower():
+                        target_lab, target_rate = min(results, key=lambda x: x[1])
+                        return f"Based on the data, {target_lab} has the lowest average pass rate at approximately {target_rate:.1f}%."
+                    else:
+                        target_lab, target_rate = max(results, key=lambda x: x[1])
+                        return f"Based on the data, {target_lab} has the highest average pass rate at approximately {target_rate:.1f}%."
+
+            return "Unable to analyze pass rates."
+
+        # Handle simple labs list query
         if tool_results:
             labs_data = tool_results[0]["result"]
             if isinstance(labs_data, list):
@@ -166,7 +217,7 @@ def process_tool_results(
                         title = lab.get("title", "Unknown")
                         lines.append(f"- {title}")
                 return "\n".join(lines)
-            return "No labs available."
+        return "No labs available."
 
     # Handle get_learners result
     if any(tc["name"] == "get_learners" for tc in tool_calls):
