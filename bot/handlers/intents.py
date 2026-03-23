@@ -7,6 +7,7 @@ No regex or keyword matching is used for routing.
 
 import sys
 import json
+import re
 from pathlib import Path
 from typing import Optional
 
