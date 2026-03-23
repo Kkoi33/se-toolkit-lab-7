@@ -127,7 +127,28 @@ def process_tool_results(
     """Process tool results and format response. No keyword matching for routing."""
     # Handle unknown/gibberish queries - return helpful message
     # This is response formatting, not routing - the LLM already called get_items
-    if len(message.strip()) < 4 or not any(c.isalpha() for c in message):
+    # Check if message looks like gibberish (no spaces, no common words)
+    common_words = [
+        "what",
+        "lab",
+        "score",
+        "student",
+        "how",
+        "many",
+        "show",
+        "list",
+        "available",
+        "sync",
+        "refresh",
+        "help",
+        "hello",
+        "hi",
+    ]
+    message_lower = message.lower()
+    has_common_word = any(word in message_lower for word in common_words)
+    has_space = " " in message
+
+    if not has_common_word and not has_space:
         return "I didn't understand. Try asking about labs, scores, or students. Use /help to see all commands."
 
     # Handle get_items result
