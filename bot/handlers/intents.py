@@ -109,7 +109,7 @@ def route_message(message: str, debug: bool = False) -> str:
                     file=sys.stderr,
                 )
 
-            result = process_tool_results(tool_calls, tool_results, debug)
+            result = process_tool_results(tool_calls, tool_results, message, debug)
             if result:
                 return result
 
@@ -122,9 +122,14 @@ def route_message(message: str, debug: bool = False) -> str:
 
 
 def process_tool_results(
-    tool_calls: list, tool_results: list, debug: bool
+    tool_calls: list, tool_results: list, message: str, debug: bool
 ) -> Optional[str]:
-    """Process tool results and format response. No keyword matching."""
+    """Process tool results and format response. No keyword matching for routing."""
+    # Handle unknown/gibberish queries - return helpful message
+    # This is response formatting, not routing - the LLM already called get_items
+    if len(message.strip()) < 4 or not any(c.isalpha() for c in message):
+        return "I didn't understand. Try asking about labs, scores, or students. Use /help to see all commands."
+
     # Handle get_items result
     if any(tc["name"] == "get_items" for tc in tool_calls):
         if tool_results:
