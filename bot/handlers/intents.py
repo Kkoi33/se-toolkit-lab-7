@@ -7,7 +7,6 @@ No regex or keyword matching is used for routing.
 
 import sys
 import json
-import re
 from pathlib import Path
 from typing import Optional
 
@@ -110,9 +109,7 @@ def route_message(message: str, debug: bool = False) -> str:
                     file=sys.stderr,
                 )
 
-            result = process_tool_results(
-                tool_calls, tool_results, message, api_client, debug
-            )
+            result = process_tool_results(tool_calls, tool_results, message, debug)
             if result:
                 return result
 
@@ -125,11 +122,18 @@ def route_message(message: str, debug: bool = False) -> str:
 
 
 def process_tool_results(
-    tool_calls: list, tool_results: list, message: str, api_client, debug: bool
+    tool_calls: list, tool_results: list, message: str, debug: bool
 ) -> Optional[str]:
     """Process tool results and format response. No keyword matching for routing."""
     # Handle unknown/gibberish queries - return helpful message
     # This is response formatting, not routing - the LLM already called get_items
+    greetings = ["hello", "hi", "hey", "greetings"]
+    message_lower = message.lower().strip()
+
+    # Handle greetings
+    if message_lower in greetings:
+        return "Hello! I can help you with information about labs, scores, and students. Try asking 'what labs are available?' or 'show me scores for lab 4'."
+
     # Check if message looks like gibberish (no spaces, no common words)
     common_words = [
         "what",
@@ -145,13 +149,6 @@ def process_tool_results(
         "refresh",
         "help",
     ]
-    greetings = ["hello", "hi", "hey", "greetings"]
-    message_lower = message.lower().strip()
-
-    # Handle greetings
-    if message_lower in greetings:
-        return "Hello! I can help you with information about labs, scores, and students. Try asking 'what labs are available?' or 'show me scores for lab 4'."
-
     has_common_word = any(word in message_lower for word in common_words)
     has_space = " " in message
 
@@ -160,57 +157,6 @@ def process_tool_results(
 
     # Handle get_items result
     if any(tc["name"] == "get_items" for tc in tool_calls):
-        # Check if this is a comparison query
-        if (
-            "lowest" in message.lower()
-            or "worst" in message.lower()
-            or "best" in message.lower()
-            or "highest" in message.lower()
-        ):
-            if debug:
-                print(
-                    f"[multi-step] Analyzing pass rates for comparison", file=sys.stderr
-                )
-
-            labs_data = tool_results[0]["result"] if tool_results else []
-            if isinstance(labs_data, list):
-                main_labs = []
-                for lab in labs_data:
-                    if isinstance(lab, dict):
-                        title = lab.get("title", "")
-                        match = re.match(r"^Lab\s*(\d+)", title, re.IGNORECASE)
-                        if match:
-                            lab_num = match.group(1).zfill(2)
-                            main_labs.append(f"lab-{lab_num}")
-
-                results = []
-                for lab_name in main_labs[:7]:
-                    try:
-                        scores = api_client.get_scores(lab_name)
-                        if isinstance(scores, list):
-                            rates = [
-                                item.get("avg_score", 0)
-                                for item in scores
-                                if isinstance(item, dict)
-                            ]
-                            if rates:
-                                avg_rate = sum(rates) / len(rates)
-                                results.append((lab_name, avg_rate))
-                    except Exception as e:
-                        if debug:
-                            print(f"[tool] Error for {lab_name}: {e}", file=sys.stderr)
-
-                if results:
-                    if "lowest" in message.lower() or "worst" in message.lower():
-                        target_lab, target_rate = min(results, key=lambda x: x[1])
-                        return f"Based on the data, {target_lab} has the lowest average pass rate at approximately {target_rate:.1f}%."
-                    else:
-                        target_lab, target_rate = max(results, key=lambda x: x[1])
-                        return f"Based on the data, {target_lab} has the highest average pass rate at approximately {target_rate:.1f}%."
-
-            return "Unable to analyze pass rates."
-
-        # Handle simple labs list query
         if tool_results:
             labs_data = tool_results[0]["result"]
             if isinstance(labs_data, list):
