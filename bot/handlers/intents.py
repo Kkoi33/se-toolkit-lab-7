@@ -25,21 +25,11 @@ from services.api_client import create_client_from_config as create_api_client
 def route_message(message: str, debug: bool = False) -> str:
     """
     Route a natural language message to appropriate tools using LLM.
-
     The LLM decides which tool to call based on tool descriptions.
-    No regex or keyword matching is used for routing.
-
-    Args:
-        message: User's message text
-        debug: If True, print debug info to stderr
-
-    Returns:
-        Bot's response text
     """
     llm_client = create_client_from_config()
     api_client = create_api_client()
 
-    # Initial messages
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": message},
@@ -48,20 +38,16 @@ def route_message(message: str, debug: bool = False) -> str:
     if debug:
         print(f"[intent] Processing: {message}", file=sys.stderr)
 
-    # Main loop: call LLM, execute tools, feed results back
     max_iterations = 5
     for iteration in range(max_iterations):
         try:
-            # Call LLM
             response = llm_client.chat(messages, tools=TOOLS)
 
-            # Check if LLM returned content directly (no tool calls)
             if response.get("content") and not response.get("tool_calls"):
                 if debug:
                     print(f"[response] Final answer from LLM", file=sys.stderr)
                 return response["content"]
 
-            # Extract tool calls
             tool_calls = llm_client.extract_tool_calls(response)
 
             if not tool_calls:
@@ -78,7 +64,6 @@ def route_message(message: str, debug: bool = False) -> str:
                         file=sys.stderr,
                     )
 
-            # Execute tool calls
             tool_results = []
             for tc in tool_calls:
                 result = execute_tool(tc["name"], tc["arguments"], api_client)
@@ -98,7 +83,6 @@ def route_message(message: str, debug: bool = False) -> str:
                     )
                     print(f"[tool] Result: {result_preview}", file=sys.stderr)
 
-            # Add assistant message with tool calls to conversation
             messages.append(
                 {
                     "role": "assistant",
@@ -107,7 +91,6 @@ def route_message(message: str, debug: bool = False) -> str:
                 }
             )
 
-            # Add tool results to conversation
             for tr in tool_results:
                 messages.append(
                     {
@@ -126,9 +109,7 @@ def route_message(message: str, debug: bool = False) -> str:
                     file=sys.stderr,
                 )
 
-            # Process tool results based on which tools were called
-            # This is response formatting, not routing - the LLM already decided which tools to call
-            result = process_tool_results(tool_calls, tool_results, message, debug)
+            result = process_tool_results(tool_calls, tool_results, debug)
             if result:
                 return result
 
@@ -141,50 +122,41 @@ def route_message(message: str, debug: bool = False) -> str:
 
 
 def process_tool_results(
-    tool_calls: list, tool_results: list, message: str, debug: bool
+    tool_calls: list, tool_results: list, debug: bool
 ) -> Optional[str]:
-    """
-    Process tool results and format response.
-
-    This function formats the response based on which tools were called by the LLM.
-    It does NOT do routing - the LLM already decided which tools to call.
-    This is just formatting the results for the user.
-    """
+    """Process tool results and format response. No keyword matching."""
     # Handle get_items result
-    get_items_called = any(tc["name"] == "get_items" for tc in tool_calls)
-    if get_items_called and tool_results:
-        labs_data = tool_results[0]["result"]
-        if isinstance(labs_data, list):
-            # Format labs list
-            lines = ["Available labs:"]
-            for lab in labs_data:
-                if isinstance(lab, dict):
-                    title = lab.get("title", "Unknown")
-                    lines.append(f"- {title}")
-            return "\n".join(lines)
-        return "No labs available."
+    if any(tc["name"] == "get_items" for tc in tool_calls):
+        if tool_results:
+            labs_data = tool_results[0]["result"]
+            if isinstance(labs_data, list):
+                lines = ["Available labs:"]
+                for lab in labs_data:
+                    if isinstance(lab, dict):
+                        title = lab.get("title", "Unknown")
+                        lines.append(f"- {title}")
+                return "\n".join(lines)
+            return "No labs available."
 
     # Handle get_learners result
-    get_learners_called = any(tc["name"] == "get_learners" for tc in tool_calls)
-    if get_learners_called and tool_results:
-        learners_data = tool_results[0]["result"]
-        if isinstance(learners_data, list):
-            return f"There are {len(learners_data)} students enrolled."
+    if any(tc["name"] == "get_learners" for tc in tool_calls):
+        if tool_results:
+            learners_data = tool_results[0]["result"]
+            if isinstance(learners_data, list):
+                return f"There are {len(learners_data)} students enrolled."
 
     # Handle trigger_sync result
-    trigger_sync_called = any(tc["name"] == "trigger_sync" for tc in tool_calls)
-    if trigger_sync_called and tool_results:
-        sync_result = tool_results[0]["result"]
-        if isinstance(sync_result, dict):
-            items_synced = sync_result.get(
-                "new_records", sync_result.get("total_records", 0)
-            )
-            return f"Sync completed successfully. {items_synced} items synced."
+    if any(tc["name"] == "trigger_sync" for tc in tool_calls):
+        if tool_results:
+            sync_result = tool_results[0]["result"]
+            if isinstance(sync_result, dict):
+                items_synced = sync_result.get(
+                    "new_records", sync_result.get("total_records", 0)
+                )
+                return f"Sync completed successfully. {items_synced} items synced."
 
     # Handle get_pass_rates result
-    get_pass_rates_called = any(tc["name"] == "get_pass_rates" for tc in tool_calls)
-    if get_pass_rates_called and tool_results:
-        # Find which lab was queried
+    if any(tc["name"] == "get_pass_rates" for tc in tool_calls):
         for tc, tr in zip(tool_calls, tool_results):
             if tc["name"] == "get_pass_rates":
                 lab_name = tc["arguments"].get("lab", "unknown")

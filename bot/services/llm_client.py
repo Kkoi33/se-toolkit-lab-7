@@ -187,9 +187,7 @@ class LLMClient:
     """Client for LLM API with tool calling support."""
 
     def __init__(self, api_key: str, base_url: str, model: str, timeout: float = 30.0):
-        """
-        Initialize LLM client.
-        """
+        """Initialize LLM client."""
         self.api_key = api_key
         base_url = base_url.rstrip("/")
         if base_url.endswith("/v1"):
@@ -226,9 +224,8 @@ class LLMClient:
                 data = response.json()
                 return data["choices"][0]["message"]
         except Exception:
-            # LLM unavailable - return a default tool call to get_items
-            # The intents.py handler will process the result appropriately
-            # This maintains the tool-calling architecture without keyword matching
+            # LLM unavailable - return default tool call
+            # No keyword matching - just return get_items as default
             return {
                 "content": None,
                 "tool_calls": [
