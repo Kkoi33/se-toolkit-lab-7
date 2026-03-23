@@ -141,10 +141,14 @@ def process_tool_results(
         "sync",
         "refresh",
         "help",
-        "hello",
-        "hi",
     ]
-    message_lower = message.lower()
+    greetings = ["hello", "hi", "hey", "greetings"]
+    message_lower = message.lower().strip()
+
+    # Handle greetings
+    if message_lower in greetings:
+        return "Hello! I can help you with information about labs, scores, and students. Try asking 'what labs are available?' or 'show me scores for lab 4'."
+
     has_common_word = any(word in message_lower for word in common_words)
     has_space = " " in message
 
