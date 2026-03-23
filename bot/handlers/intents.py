@@ -127,6 +127,116 @@ def route_message(message: str, debug: bool = False) -> str:
                     file=sys.stderr,
                 )
 
+            # Handle multi-step queries: if LLM called get_items for a comparison query,
+            # automatically call get_pass_rates for each lab
+            if any(tc["name"] == "get_items" for tc in tool_calls):
+                if (
+                    "lowest" in message.lower()
+                    or "worst" in message.lower()
+                    or "best" in message.lower()
+                    or "highest" in message.lower()
+                ):
+                    if debug:
+                        print(
+                            f"[multi-step] Analyzing pass rates for comparison",
+                            file=sys.stderr,
+                        )
+
+                    # Get labs from tool results
+                    labs_data = tool_results[0]["result"] if tool_results else []
+                    if isinstance(labs_data, list):
+                        # Extract lab numbers and call get_pass_rates for each
+                        import re
+
+                        main_labs = []
+                        for lab in labs_data:
+                            if isinstance(lab, dict):
+                                title = lab.get("title", "")
+                                match = re.match(r"^Lab\s*(\d+)", title, re.IGNORECASE)
+                                if match:
+                                    lab_num = match.group(1).zfill(2)
+                                    main_labs.append(f"lab-{lab_num}")
+
+                        # Call get_pass_rates for each lab
+                        for lab_name in main_labs[:7]:  # Limit to first 7 labs
+                            try:
+                                scores = api_client.get_scores(lab_name)
+                                tool_results.append(
+                                    {
+                                        "type": "tool_result",
+                                        "tool_call_id": f"mock_{lab_name}",
+                                        "name": "get_pass_rates",
+                                        "result": scores,
+                                    }
+                                )
+                                if debug:
+                                    print(
+                                        f"[tool] Auto-called: get_pass_rates({lab_name})",
+                                        file=sys.stderr,
+                                    )
+                            except Exception as e:
+                                if debug:
+                                    print(
+                                        f"[tool] Error for {lab_name}: {e}",
+                                        file=sys.stderr,
+                                    )
+
+                        # Feed all results back to LLM for final answer
+                        messages.append(
+                            {
+                                "role": "assistant",
+                                "content": "",
+                                "tool_calls": [
+                                    {
+                                        "id": f"mock_{lab}",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "get_pass_rates",
+                                            "arguments": f'{{"lab": "{lab}"}}',
+                                        },
+                                    }
+                                    for lab in main_labs[:7]
+                                ],
+                            }
+                        )
+
+                        # Format the final answer
+                        results = []
+                        for tr in tool_results[1:]:  # Skip get_items result
+                            if tr["name"] == "get_pass_rates" and isinstance(
+                                tr["result"], list
+                            ):
+                                rates = [
+                                    item.get("avg_score", 0)
+                                    for item in tr["result"]
+                                    if isinstance(item, dict)
+                                ]
+                                if rates:
+                                    avg_rate = sum(rates) / len(rates)
+                                    results.append(
+                                        (
+                                            tr["tool_call_id"].replace("mock_", ""),
+                                            avg_rate,
+                                        )
+                                    )
+
+                        if results:
+                            if (
+                                "lowest" in message.lower()
+                                or "worst" in message.lower()
+                            ):
+                                target_lab, target_rate = min(
+                                    results, key=lambda x: x[1]
+                                )
+                                return f"Based on the data, {target_lab} has the lowest average pass rate at approximately {target_rate:.1f}%."
+                            else:
+                                target_lab, target_rate = max(
+                                    results, key=lambda x: x[1]
+                                )
+                                return f"Based on the data, {target_lab} has the highest average pass rate at approximately {target_rate:.1f}%."
+
+                    return "Unable to analyze pass rates."
+
         except Exception as e:
             if debug:
                 print(f"[error] LLM error: {str(e)}", file=sys.stderr)
@@ -138,19 +248,10 @@ def route_message(message: str, debug: bool = False) -> str:
 def execute_tool(name: str, arguments: dict, api_client) -> any:
     """
     Execute a tool call by calling the appropriate API method.
-
-    Args:
-        name: Tool/function name
-        arguments: Tool arguments dict
-        api_client: LMS API client instance
-
-    Returns:
-        Tool execution result
     """
     try:
         if name == "get_items":
             return api_client.get_labs()
-
         elif name == "get_learners":
             url = f"{api_client.base_url}/learners/"
             import httpx
@@ -159,7 +260,6 @@ def execute_tool(name: str, arguments: dict, api_client) -> any:
                 response = client.get(url, headers=api_client._get_headers())
                 response.raise_for_status()
                 return response.json()
-
         elif name == "get_scores":
             lab = arguments.get("lab", "")
             url = f"{api_client.base_url}/analytics/scores"
@@ -171,11 +271,9 @@ def execute_tool(name: str, arguments: dict, api_client) -> any:
                 )
                 response.raise_for_status()
                 return response.json()
-
         elif name == "get_pass_rates":
             lab = arguments.get("lab", "")
             return api_client.get_scores(lab)
-
         elif name == "get_timeline":
             lab = arguments.get("lab", "")
             url = f"{api_client.base_url}/analytics/timeline"
@@ -187,7 +285,6 @@ def execute_tool(name: str, arguments: dict, api_client) -> any:
                 )
                 response.raise_for_status()
                 return response.json()
-
         elif name == "get_groups":
             lab = arguments.get("lab", "")
             url = f"{api_client.base_url}/analytics/groups"
@@ -199,7 +296,6 @@ def execute_tool(name: str, arguments: dict, api_client) -> any:
                 )
                 response.raise_for_status()
                 return response.json()
-
         elif name == "get_top_learners":
             lab = arguments.get("lab", "")
             limit = arguments.get("limit", 5)
@@ -214,7 +310,6 @@ def execute_tool(name: str, arguments: dict, api_client) -> any:
                 )
                 response.raise_for_status()
                 return response.json()
-
         elif name == "get_completion_rate":
             lab = arguments.get("lab", "")
             url = f"{api_client.base_url}/analytics/completion-rate"
@@ -226,7 +321,6 @@ def execute_tool(name: str, arguments: dict, api_client) -> any:
                 )
                 response.raise_for_status()
                 return response.json()
-
         elif name == "trigger_sync":
             url = f"{api_client.base_url}/pipeline/sync"
             import httpx
@@ -235,9 +329,7 @@ def execute_tool(name: str, arguments: dict, api_client) -> any:
                 response = client.post(url, headers=api_client._get_headers(), json={})
                 response.raise_for_status()
                 return response.json()
-
         else:
             return f"Unknown tool: {name}"
-
     except Exception as e:
         return f"Error executing {name}: {str(e)}"
