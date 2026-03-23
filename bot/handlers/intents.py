@@ -110,7 +110,9 @@ def route_message(message: str, debug: bool = False) -> str:
                     file=sys.stderr,
                 )
 
-            result = process_tool_results(tool_calls, tool_results, message, debug)
+            result = process_tool_results(
+                tool_calls, tool_results, message, api_client, debug
+            )
             if result:
                 return result
 
@@ -123,7 +125,7 @@ def route_message(message: str, debug: bool = False) -> str:
 
 
 def process_tool_results(
-    tool_calls: list, tool_results: list, message: str, debug: bool
+    tool_calls: list, tool_results: list, message: str, api_client, debug: bool
 ) -> Optional[str]:
     """Process tool results and format response. No keyword matching for routing."""
     # Handle unknown/gibberish queries - return helpful message
