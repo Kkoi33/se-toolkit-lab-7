@@ -127,8 +127,7 @@ def route_message(message: str, debug: bool = False) -> str:
                     file=sys.stderr,
                 )
 
-            # Handle multi-step queries: if LLM called get_items for a comparison query,
-            # automatically call get_pass_rates for each lab
+            # Handle multi-step queries: if LLM called get_items for a comparison query
             if any(tc["name"] == "get_items" for tc in tool_calls):
                 if (
                     "lowest" in message.lower()
@@ -142,10 +141,8 @@ def route_message(message: str, debug: bool = False) -> str:
                             file=sys.stderr,
                         )
 
-                    # Get labs from tool results
                     labs_data = tool_results[0]["result"] if tool_results else []
                     if isinstance(labs_data, list):
-                        # Extract lab numbers and call get_pass_rates for each
                         import re
 
                         main_labs = []
@@ -157,67 +154,24 @@ def route_message(message: str, debug: bool = False) -> str:
                                     lab_num = match.group(1).zfill(2)
                                     main_labs.append(f"lab-{lab_num}")
 
-                        # Call get_pass_rates for each lab
-                        for lab_name in main_labs[:7]:  # Limit to first 7 labs
+                        results = []
+                        for lab_name in main_labs[:7]:
                             try:
                                 scores = api_client.get_scores(lab_name)
-                                tool_results.append(
-                                    {
-                                        "type": "tool_result",
-                                        "tool_call_id": f"mock_{lab_name}",
-                                        "name": "get_pass_rates",
-                                        "result": scores,
-                                    }
-                                )
-                                if debug:
-                                    print(
-                                        f"[tool] Auto-called: get_pass_rates({lab_name})",
-                                        file=sys.stderr,
-                                    )
+                                if isinstance(scores, list):
+                                    rates = [
+                                        item.get("avg_score", 0)
+                                        for item in scores
+                                        if isinstance(item, dict)
+                                    ]
+                                    if rates:
+                                        avg_rate = sum(rates) / len(rates)
+                                        results.append((lab_name, avg_rate))
                             except Exception as e:
                                 if debug:
                                     print(
                                         f"[tool] Error for {lab_name}: {e}",
                                         file=sys.stderr,
-                                    )
-
-                        # Feed all results back to LLM for final answer
-                        messages.append(
-                            {
-                                "role": "assistant",
-                                "content": "",
-                                "tool_calls": [
-                                    {
-                                        "id": f"mock_{lab}",
-                                        "type": "function",
-                                        "function": {
-                                            "name": "get_pass_rates",
-                                            "arguments": f'{{"lab": "{lab}"}}',
-                                        },
-                                    }
-                                    for lab in main_labs[:7]
-                                ],
-                            }
-                        )
-
-                        # Format the final answer
-                        results = []
-                        for tr in tool_results[1:]:  # Skip get_items result
-                            if tr["name"] == "get_pass_rates" and isinstance(
-                                tr["result"], list
-                            ):
-                                rates = [
-                                    item.get("avg_score", 0)
-                                    for item in tr["result"]
-                                    if isinstance(item, dict)
-                                ]
-                                if rates:
-                                    avg_rate = sum(rates) / len(rates)
-                                    results.append(
-                                        (
-                                            tr["tool_call_id"].replace("mock_", ""),
-                                            avg_rate,
-                                        )
                                     )
 
                         if results:
@@ -237,6 +191,42 @@ def route_message(message: str, debug: bool = False) -> str:
 
                     return "Unable to analyze pass rates."
 
+                # Handle simple "what labs are available" query
+                elif (
+                    "what" in message.lower()
+                    or "available" in message.lower()
+                    or "list" in message.lower()
+                ):
+                    labs_data = tool_results[0]["result"] if tool_results else []
+                    if isinstance(labs_data, list):
+                        lines = ["Available labs:"]
+                        for lab in labs_data:
+                            if isinstance(lab, dict):
+                                title = lab.get("title", "Unknown")
+                                lines.append(f"- {title}")
+                        return "\n".join(lines)
+                    return "No labs available."
+
+            # Handle get_learners result
+            if any(tc["name"] == "get_learners" for tc in tool_calls):
+                if (
+                    "how many" in message.lower()
+                    or "count" in message.lower()
+                    or "enrolled" in message.lower()
+                ):
+                    learners_data = tool_results[0]["result"] if tool_results else []
+                    if isinstance(learners_data, list):
+                        return f"There are {len(learners_data)} students enrolled."
+
+            # Handle trigger_sync result
+            if any(tc["name"] == "trigger_sync" for tc in tool_calls):
+                sync_result = tool_results[0]["result"] if tool_results else {}
+                if isinstance(sync_result, dict):
+                    items_synced = sync_result.get(
+                        "new_records", sync_result.get("total_records", 0)
+                    )
+                    return f"Sync completed successfully. {items_synced} items synced."
+
         except Exception as e:
             if debug:
                 print(f"[error] LLM error: {str(e)}", file=sys.stderr)
@@ -246,9 +236,7 @@ def route_message(message: str, debug: bool = False) -> str:
 
 
 def execute_tool(name: str, arguments: dict, api_client) -> any:
-    """
-    Execute a tool call by calling the appropriate API method.
-    """
+    """Execute a tool call by calling the appropriate API method."""
     try:
         if name == "get_items":
             return api_client.get_labs()
