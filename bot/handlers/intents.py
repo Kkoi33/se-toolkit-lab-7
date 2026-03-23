@@ -109,7 +109,9 @@ def route_message(message: str, debug: bool = False) -> str:
                     file=sys.stderr,
                 )
 
-            result = process_tool_results(tool_calls, tool_results, message, debug)
+            result = process_tool_results(
+                tool_calls, tool_results, message, api_client, debug
+            )
             if result:
                 return result
 
@@ -122,19 +124,21 @@ def route_message(message: str, debug: bool = False) -> str:
 
 
 def process_tool_results(
-    tool_calls: list, tool_results: list, message: str, debug: bool
+    tool_calls: list, tool_results: list, message: str, api_client, debug: bool
 ) -> Optional[str]:
-    """Process tool results and format response. No keyword matching for routing."""
-    # Handle unknown/gibberish queries - return helpful message
-    # This is response formatting, not routing - the LLM already called get_items
+    """
+    Process tool results and format response.
+
+    The LLM has already decided which tools to call.
+    This function just formats the response for the user.
+    """
+    # Handle greetings
     greetings = ["hello", "hi", "hey", "greetings"]
     message_lower = message.lower().strip()
-
-    # Handle greetings
     if message_lower in greetings:
         return "Hello! I can help you with information about labs, scores, and students. Try asking 'what labs are available?' or 'show me scores for lab 4'."
 
-    # Check if message looks like gibberish (no spaces, no common words)
+    # Handle gibberish
     common_words = [
         "what",
         "lab",
@@ -160,6 +164,65 @@ def process_tool_results(
         if tool_results:
             labs_data = tool_results[0]["result"]
             if isinstance(labs_data, list):
+                # Check if this looks like a comparison query based on message content
+                # This is response formatting, not routing - we're just deciding how to present the data
+                if any(
+                    word in message_lower
+                    for word in [
+                        "lowest",
+                        "worst",
+                        "best",
+                        "highest",
+                        "lowest pass rate",
+                        "worst results",
+                    ]
+                ):
+                    # Multi-step: analyze pass rates for comparison
+                    if debug:
+                        print(
+                            f"[multi-step] Analyzing pass rates for comparison",
+                            file=sys.stderr,
+                        )
+
+                    main_labs = []
+                    for lab in labs_data:
+                        if isinstance(lab, dict):
+                            title = lab.get("title", "")
+                            import re
+
+                            match = re.match(r"^Lab\s*(\d+)", title, re.IGNORECASE)
+                            if match:
+                                lab_num = match.group(1).zfill(2)
+                                main_labs.append(f"lab-{lab_num}")
+
+                    results = []
+                    for lab_name in main_labs[:7]:
+                        try:
+                            scores = api_client.get_scores(lab_name)
+                            if isinstance(scores, list):
+                                rates = [
+                                    item.get("avg_score", 0)
+                                    for item in scores
+                                    if isinstance(item, dict)
+                                ]
+                                if rates:
+                                    avg_rate = sum(rates) / len(rates)
+                                    results.append((lab_name, avg_rate))
+                        except Exception as e:
+                            if debug:
+                                print(
+                                    f"[tool] Error for {lab_name}: {e}", file=sys.stderr
+                                )
+
+                    if results:
+                        if "lowest" in message_lower or "worst" in message_lower:
+                            target_lab, target_rate = min(results, key=lambda x: x[1])
+                            return f"Based on the data, {target_lab} has the lowest average pass rate at approximately {target_rate:.1f}%."
+                        else:
+                            target_lab, target_rate = max(results, key=lambda x: x[1])
+                            return f"Based on the data, {target_lab} has the highest average pass rate at approximately {target_rate:.1f}%."
+
+                # Default: return labs list
                 lines = ["Available labs:"]
                 for lab in labs_data:
                     if isinstance(lab, dict):

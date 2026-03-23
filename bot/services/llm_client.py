@@ -226,6 +226,7 @@ class LLMClient:
         except Exception:
             # LLM unavailable - return default tool call
             # No keyword matching - always return get_items
+            # The response formatting in intents.py will handle the rest
             return {
                 "content": None,
                 "tool_calls": [
