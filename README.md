@@ -91,3 +91,71 @@ By the end of this lab, you should be able to say:
 2. [Backend Integration](./lab/tasks/required/task-2.md) — P0: slash commands + real data
 3. [Intent-Based Natural Language Routing](./lab/tasks/required/task-3.md) — P1: LLM tool use
 4. [Containerize and Document](./lab/tasks/required/task-4.md) — P3: containerize + deploy
+
+## Deploy
+
+The bot runs as a Docker container alongside the backend on your VM.
+
+### Prerequisites
+
+- VM with Docker installed
+- Backend services running (postgres, backend, caddy)
+- `.env.docker.secret` configured with required credentials
+
+### Required environment variables
+
+In `.env.docker.secret`, ensure these are set:
+
+```text
+# Telegram Bot
+BOT_TOKEN=your-bot-token-from-botfather
+
+# LLM API (Qwen Code)
+LLM_API_KEY=sk-six-seven
+LLM_API_BASE_URL=http://host.docker.internal:8080/v1/v1
+LLM_API_MODEL=coder-model
+
+# LMS Backend API
+LMS_API_KEY=six-seven
+```
+
+> **Note**: `LLM_API_BASE_URL` uses `host.docker.internal` to reach the Qwen proxy running on the VM host (not inside Docker network).
+
+### Deploy commands
+
+```terminal
+cd ~/se-toolkit-lab-7
+
+# Stop any running bot process (from development)
+pkill -f "bot.py" 2>/dev/null || true
+
+# Build and start all services
+docker compose --env-file .env.docker.secret up --build -d
+
+# Check status
+docker compose --env-file .env.docker.secret ps
+```
+
+### Verify deployment
+
+```terminal
+# Check bot container logs
+docker compose --env-file .env.docker.secret logs bot --tail 20
+
+# Look for: "Application started" and "polling for updates"
+
+# Verify backend is still healthy
+curl -sf http://localhost:42002/docs
+
+# Test in Telegram - send messages to your bot:
+# /start, /help, /health, "what labs are available?"
+```
+
+### Troubleshooting
+
+| Symptom | Solution |
+|---------|----------|
+| Bot container restarting | Check logs: `docker compose logs bot` — usually missing env var |
+| LLM queries fail | Ensure `LLM_API_BASE_URL` uses `host.docker.internal` |
+| Backend connection fails | `LMS_API_BASE_URL` should be `http://backend:8000` (Docker service name) |
+| Build fails at `uv sync` | Ensure `uv.lock` is copied in Dockerfile |
