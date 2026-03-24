@@ -99,7 +99,6 @@ def route_message(message: str, debug: bool = False) -> str:
                     {
                         "role": "tool",
                         "tool_call_id": tr.get("tool_call_id"),
-                        "name": tr["name"],
                         "content": json.dumps(tr["result"], ensure_ascii=False)
                         if not isinstance(tr["result"], str)
                         else tr["result"],
@@ -113,14 +112,30 @@ def route_message(message: str, debug: bool = False) -> str:
                 )
 
             # Ask LLM to process tool results and generate final answer
-            messages.append(
-                {
-                    "role": "user",
-                    "content": "Now process the tool results and provide a final answer to the user's question.",
-                }
-            )
-
-            final_response = llm_client.chat(messages)
+            # Don't add extra user message - let LLM continue naturally
+            final_response = llm_client.chat(messages, tools=TOOLS)
+            
+            # If LLM returns content, use it; otherwise extract from tool calls again
+            if final_response.get("content"):
+                return final_response["content"]
+            
+            # Try to extract more tool calls if LLM wants to call more tools
+            more_tool_calls = llm_client.extract_tool_calls(final_response)
+            if more_tool_calls:
+                # Execute additional tool calls
+                for tc in more_tool_calls:
+                    result = execute_tool(tc["name"], tc["arguments"], api_client)
+                    if debug:
+                        print(f"[tool] Additional: {tc['name']}({tc['arguments']}) = {str(result)[:50]}", file=sys.stderr)
+                    # Add tool result to messages
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.get("id"),
+                        "content": str(result),
+                    })
+                # One more iteration to get final answer
+                final_response = llm_client.chat(messages)
+            
             return final_response.get("content", "I couldn't process that request.")
 
         except Exception as e:

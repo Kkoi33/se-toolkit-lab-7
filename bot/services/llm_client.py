@@ -251,19 +251,29 @@ class LLMClient:
         tool_calls = message.get("tool_calls", [])
         result = []
         for tc in tool_calls:
-            if tc.get("type") == "function":
-                func = tc.get("function", {})
-                try:
-                    arguments = json.loads(func.get("arguments", "{}"))
-                except json.JSONDecodeError:
-                    arguments = {}
-                result.append(
-                    {
-                        "id": tc.get("id"),
-                        "name": func.get("name"),
-                        "arguments": arguments,
-                    }
-                )
+            # Qwen may store function info directly or under 'function' key
+            func = tc.get("function", {})
+            if not func:
+                # Try direct access for alternative formats
+                func = tc if "name" in tc else {}
+            
+            name = func.get("name") or tc.get("name")
+            if not name:
+                continue
+                
+            arguments_str = func.get("arguments", "{}")
+            try:
+                arguments = json.loads(arguments_str) if isinstance(arguments_str, str) else arguments_str
+            except (json.JSONDecodeError, TypeError):
+                arguments = {}
+            
+            result.append(
+                {
+                    "id": tc.get("id", f"call_{len(result)}"),
+                    "name": name,
+                    "arguments": arguments,
+                }
+            )
         return result
 
 
