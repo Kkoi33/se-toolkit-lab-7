@@ -5,6 +5,8 @@ Each handler is a pure function that takes no arguments (or simple arguments)
 and returns a string response. This makes them testable without Telegram.
 """
 
+from services.api_client import create_client_from_config
+
 
 def handle_start() -> str:
     """Handle /start command - welcome message."""
@@ -42,15 +44,38 @@ Example: /scores lab-04
 
 
 def handle_health() -> str:
-    """Handle /health command - backend health check (placeholder)."""
-    # TODO: Implement real health check in Task 2
-    return "Health check: Backend connection status (not yet implemented)"
+    """Handle /health command - backend health check."""
+    try:
+        client = create_client_from_config()
+        result = client.get_health()
+        if result.get("healthy"):
+            count = result.get("item_count", 0)
+            return f"✅ Backend is healthy! {count} items available."
+        else:
+            return "❌ Backend returned unhealthy status."
+    except Exception as e:
+        return f"❌ Backend unavailable: {e}"
 
 
 def handle_labs() -> str:
-    """Handle /labs command - list available labs (placeholder)."""
-    # TODO: Implement real labs listing in Task 2
-    return "Available labs: (not yet implemented)"
+    """Handle /labs command - list available labs."""
+    try:
+        client = create_client_from_config()
+        labs = client.get_labs()
+        if not labs:
+            return "No labs available."
+        
+        lines = ["📚 Available labs:"]
+        for lab in labs[:10]:  # Limit to 10
+            title = lab.get("title", "Unknown")
+            lines.append(f"• {title}")
+        
+        if len(labs) > 10:
+            lines.append(f"... and {len(labs) - 10} more")
+        
+        return "\n".join(lines)
+    except Exception as e:
+        return f"❌ Error fetching labs: {e}"
 
 
 def handle_scores(lab_name: str = None) -> str:
@@ -66,5 +91,21 @@ def handle_scores(lab_name: str = None) -> str:
     if lab_name is None:
         return "Usage: /scores <lab_name>\nExample: /scores lab-04"
 
-    # TODO: Implement real scores lookup in Task 2
-    return f"Scores for {lab_name}: (not yet implemented)"
+    try:
+        client = create_client_from_config()
+        scores = client.get_scores(lab_name)
+        
+        if not scores:
+            return f"No score data available for {lab_name}."
+        
+        lines = [f"📊 Scores for {lab_name}:"]
+        for item in scores:
+            if isinstance(item, dict):
+                task = item.get("task", "Unknown")
+                rate = item.get("avg_score", 0)
+                attempts = item.get("attempts", 0)
+                lines.append(f"• {task}: {rate:.1f}% ({attempts} attempts)")
+        
+        return "\n".join(lines)
+    except Exception as e:
+        return f"❌ Error fetching scores: {e}"
