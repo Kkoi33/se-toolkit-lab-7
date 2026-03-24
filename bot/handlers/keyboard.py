@@ -4,26 +4,28 @@ Inline keyboard buttons for Telegram bot.
 Provides quick action buttons for common queries.
 """
 
+from telegram import InlineKeyboardButton
+
 
 def get_main_keyboard() -> list:
     """
     Get main inline keyboard with common actions.
-    
+
     Returns:
         List of button rows for Telegram InlineKeyboardMarkup
     """
     return [
         [
-            {"text": "📋 Available Labs", "callback_data": "cmd_labs"},
-            {"text": "💪 Health Check", "callback_data": "cmd_health"},
+            InlineKeyboardButton("📋 Available Labs", callback_data="cmd_labs"),
+            InlineKeyboardButton("💪 Health Check", callback_data="cmd_health"),
         ],
         [
-            {"text": "📊 Scores Lab 04", "callback_data": "cmd_scores_lab04"},
-            {"text": "📊 Scores Lab 03", "callback_data": "cmd_scores_lab03"},
+            InlineKeyboardButton("📊 Scores Lab 04", callback_data="cmd_scores_lab04"),
+            InlineKeyboardButton("📊 Scores Lab 03", callback_data="cmd_scores_lab03"),
         ],
         [
-            {"text": "🏆 Top 5 Students", "callback_data": "cmd_top5"},
-            {"text": "👥 Groups Performance", "callback_data": "cmd_groups"},
+            InlineKeyboardButton("🏆 Top 5 Students", callback_data="cmd_top5"),
+            InlineKeyboardButton("👥 Groups Performance", callback_data="cmd_groups"),
         ],
     ]
 
