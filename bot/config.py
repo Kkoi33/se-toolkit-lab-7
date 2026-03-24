@@ -17,19 +17,21 @@ def load_config() -> dict[str, str]:
     Returns:
         Dictionary with configuration values
     """
-    # Path to .env.bot.secret in the bot directory
-    env_file = Path(__file__).parent / ".env.bot.secret"
+    # Path to .env file in the bot directory
+    env_file = Path(__file__).parent / ".env"
 
     # Load environment variables from file
     if env_file.exists():
         load_dotenv(env_file)
 
     return {
-        "BOT_TOKEN": os.getenv("BOT_TOKEN", ""),
+        "BOT_TOKEN": os.getenv("TELEGRAM_BOT_TOKEN", os.getenv("BOT_TOKEN", "")),
         "LMS_API_BASE_URL": os.getenv("LMS_API_BASE_URL", "http://localhost:42002"),
         "LMS_API_KEY": os.getenv("LMS_API_KEY", "six-seven"),
         "LLM_API_KEY": os.getenv("LLM_API_KEY", "six-seven"),
-        "LLM_MODEL": os.getenv("LLM_MODEL", "coder-model"),
+        "LLM_API_BASE_URL": os.getenv("LLM_API_BASE_URL", "http://localhost:42005"),
+        "LLM_MODEL": os.getenv("LLM_API_MODEL", "coder-model"),
+        "BACKEND_URL": os.getenv("BACKEND_URL", "http://localhost:42002"),
     }
 
 
