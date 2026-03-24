@@ -1,0 +1,21 @@
+{
+  "modelProviders": {
+    "openai": [
+      {
+        "id": "local-proxy",
+        "name": "Local Proxy",
+        "baseUrl": "http://localhost:8080/v1",
+        "apiKey": "six-seven"
+      }
+    ]
+  },
+  "security": {
+    "auth": {
+      "selectedType": "qwen-oauth"
+    }
+  },
+  "model": {
+    "name": "coder-model"
+  },
+  "$version": 3
+}

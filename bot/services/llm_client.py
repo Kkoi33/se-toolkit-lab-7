@@ -7,7 +7,7 @@ The LLM decides which tool to call - no regex or keyword matching in routing.
 
 import httpx
 import json
-from typing import Optional, Any
+from typing import Optional, Any, List, Dict
 
 
 # Tool definitions for all 9 backend endpoints
@@ -156,31 +156,29 @@ TOOLS = [
     },
 ]
 
-SYSTEM_PROMPT = """You are a helpful assistant for a software engineering course. You have access to backend API tools that provide data about labs, scores, and students.
+SYSTEM_PROMPT = """You are a helpful assistant for a software engineering course.
 
-When a user asks a question:
-1. First understand what they're asking
-2. Call the appropriate tool(s) to get the data
-3. Analyze the results
-4. Provide a clear, helpful answer based on the data
+CRITICAL RULES:
+1. You MUST call tools to get data - NEVER make up numbers or guess
+2. After calling tools, you will receive results - use them to answer
+3. Always include specific data in answers: lab names, numbers, percentages
 
 Available tools:
-- get_items: List all labs and tasks
-- get_learners: List enrolled students
-- get_scores: Score distribution for a lab
-- get_pass_rates: Per-task pass rates for a lab
-- get_timeline: Submissions timeline for a lab
-- get_groups: Per-group performance for a lab
-- get_top_learners: Top N learners for a lab
-- get_completion_rate: Completion rate for a lab
+- get_items: List all labs and tasks (no parameters)
+- get_learners: List enrolled students (no parameters)  
+- get_pass_rates: Get pass rates for a lab (requires: lab)
+- get_scores: Get score distribution for a lab (requires: lab)
+- get_groups: Get per-group scores for a lab (requires: lab)
+- get_top_learners: Get top N students (requires: lab, limit)
+- get_completion_rate: Get completion rate (requires: lab)
+- get_timeline: Get submission timeline (requires: lab)
 - trigger_sync: Refresh data from autochecker
 
-For multi-step questions (e.g., "which lab has the lowest pass rate"), you may need to:
-1. First call get_items to get all labs
-2. Then call get_pass_rates for each lab
-3. Compare the results and provide an answer
-
-Always call tools when you need data. Don't make up numbers."""
+Examples:
+- "what labs are available?" → call get_items(), then list labs from results
+- "show me scores for lab 4" → call get_pass_rates(lab="lab-04"), report scores
+- "how many students enrolled?" → call get_learners(), count results
+- "which lab has lowest pass rate?" → call get_items(), then get_pass_rates for each lab, compare"""
 
 
 class LLMClient:
@@ -203,7 +201,7 @@ class LLMClient:
             "Content-Type": "application/json",
         }
 
-    def chat(self, messages: list[dict], tools: Optional[list] = None) -> dict:
+    def chat(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """Send chat completion request to LLM."""
         url = f"{self.base_url}/chat/completions"
 
@@ -217,45 +215,33 @@ class LLMClient:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
 
-        try:
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(url, headers=self._get_headers(), json=payload)
-                response.raise_for_status()
-                data = response.json()
-                return data["choices"][0]["message"]
-        except Exception:
-            # LLM unavailable - return default tool call
-            # No keyword matching - always return get_items
-            # The response formatting in intents.py will handle the rest
-            return {
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": "fallback_1",
-                        "type": "function",
-                        "function": {"name": "get_items", "arguments": "{}"},
-                    }
-                ],
-            }
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.post(url, headers=self._get_headers(), json=payload)
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]
 
-    def extract_tool_calls(self, message: dict) -> list[dict]:
+    def extract_tool_calls(self, message: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract tool calls from LLM response."""
         tool_calls = message.get("tool_calls", [])
         result = []
         for tc in tool_calls:
-            if tc.get("type") == "function":
-                func = tc.get("function", {})
-                try:
-                    arguments = json.loads(func.get("arguments", "{}"))
-                except json.JSONDecodeError:
-                    arguments = {}
-                result.append(
-                    {
-                        "id": tc.get("id"),
-                        "name": func.get("name"),
-                        "arguments": arguments,
-                    }
-                )
+            func = tc.get("function", {})
+            name = func.get("name")
+            if not name:
+                continue
+            
+            arguments_str = func.get("arguments", "{}")
+            try:
+                arguments = json.loads(arguments_str) if isinstance(arguments_str, str) else arguments_str
+            except (json.JSONDecodeError, TypeError):
+                arguments = {}
+            
+            result.append({
+                "id": tc.get("id", f"call_{len(result)}"),
+                "name": name,
+                "arguments": arguments,
+            })
         return result
 
 
