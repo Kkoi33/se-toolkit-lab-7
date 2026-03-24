@@ -156,38 +156,29 @@ TOOLS = [
     },
 ]
 
-SYSTEM_PROMPT = """You are a helpful assistant for a software engineering course. You have access to backend API tools that provide data about labs, scores, and students.
+SYSTEM_PROMPT = """You are a helpful assistant for a software engineering course.
 
-CRITICAL: You MUST call tools to get data. Never make up numbers or guess.
-
-When a user asks a question:
-1. Identify what data you need
-2. Call the appropriate tool(s) with correct parameters
-3. Wait for tool results
-4. Analyze the results
-5. Provide a clear, specific answer with actual numbers and names from the data
+CRITICAL RULES:
+1. You MUST call tools to get data - NEVER make up numbers or guess
+2. After calling tools, you will receive results - use them to answer
+3. Always include specific data in answers: lab names, numbers, percentages
 
 Available tools:
-- get_items: List all labs and tasks (no parameters) - use this first to get lab identifiers
-- get_learners: List enrolled students and their groups (no parameters)
-- get_scores: Score distribution for a specific lab (requires: lab)
-- get_pass_rates: Per-task pass rates for a lab (requires: lab)
-- get_timeline: Submissions timeline for a lab (requires: lab)
-- get_groups: Per-group performance for a lab (requires: lab)
-- get_top_learners: Top N learners (requires: lab, limit)
-- get_completion_rate: Completion rate percentage (requires: lab)
-- trigger_sync: Refresh data from autochecker (no parameters)
+- get_items: List all labs and tasks (no parameters)
+- get_learners: List enrolled students (no parameters)  
+- get_pass_rates: Get pass rates for a lab (requires: lab)
+- get_scores: Get score distribution for a lab (requires: lab)
+- get_groups: Get per-group scores for a lab (requires: lab)
+- get_top_learners: Get top N students (requires: lab, limit)
+- get_completion_rate: Get completion rate (requires: lab)
+- get_timeline: Get submission timeline (requires: lab)
+- trigger_sync: Refresh data from autochecker
 
 Examples:
-- "what labs are available?" → call get_items(), then list the labs from results
-- "show me scores for lab 4" → call get_pass_rates(lab="lab-04"), report the scores
-- "how many students are enrolled?" → call get_learners(), count and report
-- "which group is best in lab 3?" → call get_groups(lab="lab-03"), find highest scoring group
-- "which lab has the lowest pass rate?" → call get_items(), then get_pass_rates for each lab, compare and report
-
-For multi-step questions: You may need to call multiple tools. After receiving tool results, you can call more tools if needed.
-
-Always include specific data in your answer: lab names, numbers, percentages, student counts."""
+- "what labs are available?" → call get_items(), then list labs from results
+- "show me scores for lab 4" → call get_pass_rates(lab="lab-04"), report scores
+- "how many students enrolled?" → call get_learners(), count results
+- "which lab has lowest pass rate?" → call get_items(), then get_pass_rates for each lab, compare"""
 
 
 class LLMClient:
@@ -224,55 +215,33 @@ class LLMClient:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
 
-        try:
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(url, headers=self._get_headers(), json=payload)
-                response.raise_for_status()
-                data = response.json()
-                return data["choices"][0]["message"]
-        except Exception:
-            # LLM unavailable - return default tool call
-            # No keyword matching - always return get_items
-            # The response formatting in intents.py will handle the rest
-            return {
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": "fallback_1",
-                        "type": "function",
-                        "function": {"name": "get_items", "arguments": "{}"},
-                    }
-                ],
-            }
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.post(url, headers=self._get_headers(), json=payload)
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]
 
     def extract_tool_calls(self, message: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract tool calls from LLM response."""
         tool_calls = message.get("tool_calls", [])
         result = []
         for tc in tool_calls:
-            # Qwen may store function info directly or under 'function' key
             func = tc.get("function", {})
-            if not func:
-                # Try direct access for alternative formats
-                func = tc if "name" in tc else {}
-            
-            name = func.get("name") or tc.get("name")
+            name = func.get("name")
             if not name:
                 continue
-                
+            
             arguments_str = func.get("arguments", "{}")
             try:
                 arguments = json.loads(arguments_str) if isinstance(arguments_str, str) else arguments_str
             except (json.JSONDecodeError, TypeError):
                 arguments = {}
             
-            result.append(
-                {
-                    "id": tc.get("id", f"call_{len(result)}"),
-                    "name": name,
-                    "arguments": arguments,
-                }
-            )
+            result.append({
+                "id": tc.get("id", f"call_{len(result)}"),
+                "name": name,
+                "arguments": arguments,
+            })
         return result
 
 
