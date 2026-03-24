@@ -7,7 +7,7 @@ The LLM decides which tool to call - no regex or keyword matching in routing.
 
 import httpx
 import json
-from typing import Optional, Any
+from typing import Optional, Any, List, Dict
 
 
 # Tool definitions for all 9 backend endpoints
@@ -203,7 +203,7 @@ class LLMClient:
             "Content-Type": "application/json",
         }
 
-    def chat(self, messages: list[dict], tools: Optional[list] = None) -> dict:
+    def chat(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """Send chat completion request to LLM."""
         url = f"{self.base_url}/chat/completions"
 
@@ -238,7 +238,7 @@ class LLMClient:
                 ],
             }
 
-    def extract_tool_calls(self, message: dict) -> list[dict]:
+    def extract_tool_calls(self, message: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract tool calls from LLM response."""
         tool_calls = message.get("tool_calls", [])
         result = []
