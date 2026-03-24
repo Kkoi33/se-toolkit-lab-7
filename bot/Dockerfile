@@ -5,17 +5,17 @@ FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
 
 WORKDIR /app
 
-# Copy bot-specific files
-COPY bot/pyproject.toml bot/uv.lock ./
+# Copy root workspace files for uv sync
+COPY pyproject.toml uv.lock ./
 
-# Install dependencies using uv
+# Copy bot-specific files
+COPY bot/pyproject.toml ./bot/
+
+# Install dependencies using uv (workspace-aware)
 RUN uv sync --frozen --no-dev
 
 # Copy bot source code
 COPY bot/ ./bot/
-
-# Copy root .env.docker.secret for environment variables (will be overridden by compose)
-# Bot reads from bot/.env or environment variables
 
 # Set working directory to bot
 WORKDIR /app/bot
